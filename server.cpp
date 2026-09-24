@@ -17,7 +17,6 @@
 #include "include/models.hpp"
 #include "include/BackupDb.hpp"
 #include "include/MemDatabase.hpp"
-#include "include/db_search.hpp"
 
 using json = nlohmann::json;
 
