@@ -458,13 +458,13 @@ public:
                 int vlength = sizeof(vec) / sizeof(vec[0]);
 
                 float distance = cosine_similarity(embedding, vec);
-                std::cout << "distance=" << distance << std::endl;            
+                //std::cout << "distance=" << distance << std::endl;            
                 ResultEmbed res_item;
                 res_item.id = id;
                 res_item.embedding = vec;
                 res_item.content = data.content;
                 res_item.distance = distance;
-                if(distance > 0.5) {
+                if(distance > 0.4) {
                     result_items.push_back(res_item);
                 }
             }
