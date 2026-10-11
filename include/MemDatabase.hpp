@@ -362,6 +362,30 @@ public:
         return ret;
     }
 
+    std::vector<EmbedData> get_db_one(std::string table_name, std::string id_str) 
+    {
+        std::string sql =
+        "SELECT id, content, embeddings FROM " + table_name + " WHERE id='" + id_str+ "';";
+
+        sqlite3_stmt* stmt = prepare(sql.c_str());
+        int count = 0;
+        std::vector<EmbedData> items;
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            EmbedData data;
+            data.id      = col_text(stmt, 0);
+            data.content      = col_text(stmt, 1);
+            std::string emb_str = col_text(stmt, 2);
+            json j1 = json::parse(emb_str);
+            auto vec = j1;
+            //std::cout << "vlen=" << vec.size() << std::endl;
+            data.embedding    = vec.get<std::vector<float>>();
+            //std::vector<float> vec9 = {0.11, 0.12, 0.21};
+            items.push_back(data);
+        }
+        sqlite3_finalize(stmt);
+        return items;
+    }
+
     std::vector<EmbedData> getTableItems(std::string table_name) {
         std::string sql =
             "SELECT id, content, embeddings FROM " + table_name + ";";
@@ -433,6 +457,30 @@ public:
         }
         return ret;
     }  
+
+    std::string get_one_item(std::string table_name, std::string id_str) 
+    {
+        std::string ret = "";
+        try {
+
+            int count =  get_count(table_name);
+            //cout << "count=" << count << "\n";
+            if(count == 0){
+                std::cout << "error, documet none"  << "\n";
+                return "[]";
+            }
+            std::vector<EmbedData> items = get_db_one(table_name, id_str);
+            json j2 = items;
+            std::string json_str = j2.dump();
+            std::cout << json_str << std::endl;            
+            ret = json_str;
+            return ret;
+        } catch (const std::exception &e) {
+            std::cerr << e.what() << std::endl;
+            return ret;
+        }
+        return ret;
+    } 
 
     std::string getTableList(std::string table_name, std::string vec_str, int limit) {
         std::string ret = "";

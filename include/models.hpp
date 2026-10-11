@@ -10,6 +10,8 @@ struct EmbedData {
     std::vector<float> embedding;
     std::string content;
 };
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(EmbedData, id, embedding, content)
+
 struct ResultEmbed {
     std::string id;
     std::vector<float> embedding;

@@ -1,4 +1,5 @@
 #include "httplib.h"
+#include <chrono>
 #include <iostream>
 #include <cstring>
 #include <future>
@@ -19,6 +20,11 @@
 #include "include/MemDatabase.hpp"
 
 using json = nlohmann::json;
+
+auto logger = spdlog::basic_logger_mt(
+    "file_logger",
+    "app.log"
+);
 
 std::string BACKUP_DB_PATH = "./data/backup.db";
 std::string BACKUP_SQL_PATH = "./data/backup.sql";
@@ -107,18 +113,19 @@ void backup_handle() {
         BackupDb bLib(BACKUP_DB_PATH);
         while (true) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            if(LOG_FILE_WRITE == "1"){
+                logger->flush();
+            }            
             std::vector<QueItem> vec1 = memDb.cache_select_list();
             std::cout << "vec.size()=" << vec1.size() << std::endl; 
             if (vec1.size() > 0){
                 for (const auto& citem : vec1) {
                     std::cout << "citem.uuid=" << citem.uuid << std::endl; 
                     std::cout << "citem.sql=" << citem.sql << std::endl;
-                    /*
                     if(LOG_FILE_WRITE == "1"){
                         logger->info("sql=" +citem.sql);
                         logger->flush();
                     } 
-                    */
                     bool ok = bLib.executeSql(citem.sql);
                     if(ok == false){
                         std::cerr << "error:, bLib.executeSql "<< std::endl;
@@ -138,11 +145,22 @@ void backup_handle() {
 // ─────────────────────────────────────────
 int main() {
     httplib::Server svr;
+    char* log_out = std::getenv("LOG_FILE_WRITE");
+    if (log_out) {
+        std::cout << "log_out=" << log_out << std::endl;
+        std::string log_valid = log_out;
+        if(log_valid == "1"){
+            LOG_FILE_WRITE = "1";
+            std::cout << "log_valid=OK" << std::endl;
+        }    
+    }else{
+        std::cout << "log_out: NONE" << std::endl;
+    }    
 
     try{    
         std::string content = readFileToString(BACKUP_SQL_PATH);
         std::cout << "--- SQL-FILE-TEXT ---" << std::endl;
-        std::cout << content << std::endl;  
+        //std::cout << content << std::endl;  
         bool ret = memDb.init_import(content.c_str());  
         std::cout << "memDb.init_import.ret=" << ret << std::endl;  
     } catch (const std::exception& e) {
@@ -169,6 +187,11 @@ int main() {
             std::cout << "content=" << content << "\n";
             std::string vector = j.at("vector").get<std::string>();
             std::cout << "vector=" << vector << "\n";
+            if(LOG_FILE_WRITE == "1"){
+                std::string cont_str1 = content.substr(0, 40);
+                logger->info("content=" + cont_str1);
+                logger->flush();
+            }
             //validate
             bool ok = memDb.validate_vec_len(table, vector);
             if( ok == false){
@@ -200,6 +223,9 @@ int main() {
 
     svr.Post("/api/select", [](const httplib::Request& req, httplib::Response& res) {
         std::lock_guard<std::mutex> lk(g_mutex);
+        // 開始時刻
+        auto start = std::chrono::high_resolution_clock::now();                
+
         // 1. Content-Typeの確認
         if (req.get_header_value("Content-Type") != "application/json") {
             res.status = 400;
@@ -231,6 +257,10 @@ int main() {
             json j1 = re1;
             std::string json_str = j1.dump();
             std::cout << json_str << std::endl;            
+            auto end = std::chrono::high_resolution_clock::now();
+            // 差分（ミリ秒）
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+            std::cout << "time_end: " << duration.count() << " ms" << std::endl;
 
             res.status = 200;
             res.set_content(json_str, "application/json");
@@ -242,6 +272,48 @@ int main() {
         }        
     });
 
+    svr.Post("/api/get_one", [](const httplib::Request& req, httplib::Response& res) {
+        std::lock_guard<std::mutex> lk(g_mutex);
+        // 開始時刻
+        auto start = std::chrono::high_resolution_clock::now();                
+
+        // 1. Content-Typeの確認
+        if (req.get_header_value("Content-Type") != "application/json") {
+            res.status = 400;
+            res.set_content("Expected application/json", "text/plain");
+            return;
+        }        
+        try{
+            // 2. JSONデコード (req.body をパース)
+            json j = json::parse(req.body);
+            // 3. データの取り出し (例: {"name": "Gopher", "id": 123})
+            std::string table = j.at("table").get<std::string>();
+            std::cout << "table=" << table << "\n";
+            std::string id = j.at("id").get<std::string>();
+            std::cout << "id=" << id << "\n";
+            //validate
+            std::string resp = memDb.get_one_item(table, id); 
+            
+            SearchListResp re1;
+            re1.ret_code = 200;
+            re1.data = resp;
+            json j1 = re1;
+            std::string json_str = j1.dump();
+            std::cout << json_str << std::endl;            
+            auto end = std::chrono::high_resolution_clock::now();
+            // 差分（ミリ秒）
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+            std::cout << "time_end: " << duration.count() << " ms" << std::endl;
+
+            res.status = 200;
+            res.set_content(json_str, "application/json");
+        } catch (const std::exception& e) {
+            std::cout << "\n[ERROR] " << e.what() << "\n";
+            // キーが存在しない場合など
+            res.status = 500;
+            res.set_content("Internal Server Error", "text/plain");
+        }        
+    });
 
     svr.Post("/api/delete", [](const httplib::Request& req, httplib::Response& res) {
         std::lock_guard<std::mutex> lk(g_mutex);
